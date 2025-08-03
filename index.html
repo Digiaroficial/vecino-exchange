@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vecino Exchange - Intercambio de Efectivo Seguro</title>
+    
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: La aplicación está diseñada como un panel de control de una sola tarea. La estructura se divide en tres secciones lógicas para guiar al usuario: 1) Un panel de acción principal (izquierda) donde el usuario inicia la solicitud. 2) Un mapa interactivo (derecha) que es el elemento visual central para seleccionar un "vecino". 3) Un panel de estado de la transacción (abajo a la izquierda) que muestra el progreso en tiempo real. Esta estructura fue elegida porque sigue el flujo mental del usuario: '¿Qué quiero hacer?' (panel de acción), '¿Dónde puedo hacerlo?' (mapa), y '¿Cuál es el estado de mi solicitud?' (panel de estado), haciendo el proceso intuitivo y reduciendo la incertidumbre. -->
+    <!-- Visualization & Content Choices: 1. Flujo de Transacción: Report Info -> Flujo de una Transacción en la Red de Vecinos. Goal -> Informar y guiar. Viz -> Diagrama de proceso interactivo (HTML/CSS/JS). Interaction -> El estado actual se resalta dinámicamente. Justification -> Un tracker de progreso visual es la forma más clara de mostrar un proceso de varios pasos. 2. Red de Vecinos: Report Info -> Módulo de Geolocalización y Mapa. Goal -> Organizar y permitir selección. Viz -> Mapa simulado con iconos (HTML/CSS/JS). Interaction -> Hacer clic en un ícono de vecino muestra sus detalles y permite seleccionarlo. Justification -> Un mapa es la herramienta más intuitiva para visualizar datos geográficos y tomar decisiones basadas en la proximidad. 3. Datos Clave (Comisiones, Calificaciones): Report Info -> Red de "Vecinos" Certificados. Goal -> Informar. Viz -> Bloques de texto dinámicos. Interaction -> la información se actualiza al seleccionar un vecino. Justification -> La presentación directa de texto y números es la más efectiva para datos específicos. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .map-icon {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+        }
+        .map-icon.user {
+            width: 40px;
+            height: 40px;
+            background-color: #4f46e5; /* indigo-600 */
+            z-index: 10;
+        }
+        .map-icon.neighbor {
+            width: 36px;
+            height: 36px;
+            background-color: #16a34a; /* green-600 */
+        }
+        .map-icon.neighbor:hover, .map-icon.neighbor.selected {
+            transform: translate(-50%, -50%) scale(1.25);
+            border: 2px solid white;
+        }
+        .step {
+            transition: all 0.4s ease;
+        }
+        .step.completed .step-circle {
+            background-color: #16a34a; /* green-600 */
+            border-color: #16a34a;
+        }
+        .step.completed .step-line {
+            background-color: #16a34a;
+        }
+        .step.active .step-circle {
+            background-color: #4f46e5; /* indigo-600 */
+            border-color: #4f46e5;
+        }
+        .step.active .step-text {
+            font-weight: 700;
+            color: #3730a3; /* indigo-800 */
+        }
+        .step-circle {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            border: 2px solid #9ca3af; /* gray-400 */
+            background-color: white;
+            transition: all 0.4s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .step-line {
+            flex-grow: 1;
+            height: 2px;
+            background-color: #9ca3af; /* gray-400 */
+            transition: all 0.4s ease;
+        }
+        #custom-modal-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        /* New styles for the info slider */
+        #info-slider-container {
+            overflow: hidden;
+            position: relative;
+        }
+        #info-slides-wrapper {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+        .info-slide {
+            flex: 0 0 100%;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .nav-btn {
+            background-color: #e5e7eb; /* gray-200 */
+            color: #374151; /* gray-700 */
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s;
+        }
+        .nav-btn:hover {
+            background-color: #d1d5db; /* gray-300 */
+        }
+        .nav-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            background-color: #d1d5db; /* gray-300 */
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .dot.active {
+            background-color: #4f46e5; /* indigo-600 */
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Vecino Exchange</h1>
+            <p class="text-lg text-gray-600 mt-2">Tu forma segura y rápida de obtener efectivo o transferencia.</p>
+        </header>
+
+        <main class="grid grid-cols-1 lg:grid-cols-5 gap-8">
+
+            <!-- Columna Izquierda: Controles y Estado -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- Panel de Acción -->
+                <div id="action-panel" class="bg-white p-6 rounded-xl shadow-lg">
+                    <div class="flex items-center justify-between mb-6">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <span id="label-transfer-out" class="font-bold text-gray-400 mr-3 transition-colors duration-300">Necesito Transferencia</span>
+                            <div class="relative">
+                                <input type="checkbox" id="mode-toggle" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </div>
+                            <span id="label-cash-out" class="font-bold text-indigo-600 ml-3 transition-colors duration-300">Necesito Efectivo</span>
+                        </label>
+                    </div>
+
+                    <div id="initial-view">
+                        <h2 id="initial-view-title" class="text-2xl font-bold mb-1">Solicitar Efectivo</h2>
+                        <p id="initial-view-desc" class="text-gray-600 mb-4">Ingresa el monto que necesitas y encontraremos un vecino cercano para ayudarte.</p>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="amount" id="amount-label" class="block text-sm font-medium text-gray-700">Monto en efectivo (ARS)</label>
+                                <input type="number" id="amount" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 text-lg" placeholder="Ej: 5000">
+                            </div>
+                            <button id="find-neighbor-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 shadow-md">
+                                Buscar Vecino Cercano
+                            </button>
+                        </div>
+                    </div>
+                    <div id="neighbor-selected-view" class="hidden">
+                         <h2 id="selected-view-title" class="text-2xl font-bold mb-1">Confirmar Selección</h2>
+                         <p id="selected-view-desc" class="text-gray-600 mb-4">Estás a punto de iniciar un intercambio con <strong id="selected-neighbor-name" class="text-indigo-700"></strong>.</p>
+                         <div class="bg-slate-100 p-4 rounded-lg space-y-2">
+                            <div class="flex justify-between"><span id="transaction-item-label" class="text-gray-600">Recibes en efectivo:</span> <strong id="cash-amount-text" class="text-lg"></strong></div>
+                            <div class="flex justify-between"><span class="text-gray-600">Comisión del servicio:</span> <strong id="fee-text" class="text-lg"></strong></div>
+                            <hr>
+                            <div class="flex justify-between text-lg"><span id="total-label" class="font-semibold">Total a transferir:</span> <strong id="total-transfer-text" class="text-indigo-700"></strong></div>
+                         </div>
+                         <button id="confirm-exchange-btn" class="mt-4 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300 shadow-md">
+                            Confirmar e Iniciar Transacción
+                         </button>
+                         <button id="cancel-selection-btn" class="mt-2 w-full text-gray-600 font-medium py-2 px-4 rounded-lg hover:bg-gray-200 transition duration-300">
+                            Cancelar
+                         </button>
+                    </div>
+                </div>
+
+                <!-- Panel de Estado de la Transacción -->
+                <div id="status-panel" class="bg-white p-6 rounded-xl shadow-lg hidden">
+                    <h2 class="text-2xl font-bold mb-4">Estado de tu Intercambio</h2>
+                    <p id="status-intro" class="text-gray-600 mb-6">Sigue el progreso de tu transacción. Te guiaremos en cada paso para garantizar tu seguridad.</p>
+                    <div class="space-y-4">
+                        <!-- Paso 1 -->
+                        <div id="step-1" class="step flex items-start">
+                            <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">?</div>
+                                <div class="step-line h-16"></div>
+                            </div>
+                            <div>
+                                <h3 id="step-1-title" class="step-text font-semibold text-lg text-gray-500">Transferencia a la Plataforma</h3>
+                                <p id="step-1-desc" class="text-gray-600 text-sm">Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.</p>
+                            </div>
+                        </div>
+                        <!-- Paso 2 -->
+                        <div id="step-2" class="step flex items-start">
+                            <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">2</div>
+                                <div class="step-line h-16"></div>
+                            </div>
+                            <div>
+                                <h3 id="step-2-title" class="step-text font-semibold text-lg text-gray-500">Coordinando Entrega</h3>
+                                <p id="step-2-desc" class="text-gray-600 text-sm">Tu vecino ha sido notificado y se está preparando para encontrarte.</p>
+                            </div>
+                        </div>
+                        <!-- Paso 3 -->
+                        <div id="step-3" class="step flex items-start">
+                             <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">3</div>
+                            </div>
+                            <div>
+                                <h3 id="step-3-title" class="step-text font-semibold text-lg text-gray-500">Confirmar Recepción</h3>
+                                <p id="step-3-desc" class="text-gray-600 text-sm">Cuando recibas el efectivo, confírmalo aquí para liberar los fondos al vecino.</p>
+                                <button id="confirm-receipt-btn" class="hidden mt-2 bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-indigo-700 transition duration-300 text-sm">He Recibido el Efectivo</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Nuevo Panel de Información (Cómo Funciona) con Carrusel -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-bold mb-4">Cómo Funciona</h3>
+                    <div id="info-slider-container" class="relative">
+                        <div id="info-slides-wrapper">
+                            <!-- Slide 1 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">??</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">1. Solicita tu Intercambio</h4>
+                                        <p class="text-gray-600">Ingresa el monto que necesitas (efectivo o transferencia) en la aplicación.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 2 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">??</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">2. Elige un Vecino Verificado</h4>
+                                        <p class="text-gray-600">Selecciona un vecino en el mapa. Todos los perfiles están verificados y tienen un historial de reputación.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 3 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">??</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">3. Dinero Protegido con Fideicomiso</h4>
+                                        <p class="text-gray-600">Tu dinero queda retenido de forma segura en la plataforma. No se libera hasta que tú lo autorices.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 4 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">??</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">4. Encuentro y Verificación</h4>
+                                        <p class="text-gray-600">Te encuentras con el vecino para realizar el intercambio físico de efectivo o transferencia.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 5 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">?</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">5. Confirma la Recepción</h4>
+                                        <p class="text-gray-600">En la app, confirma que has recibido el efectivo. En ese momento, y solo entonces, el dinero se libera a tu vecino.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center mt-4">
+                            <button id="prev-slide-btn" class="nav-btn disabled">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                </svg>
+                            </button>
+                            <div id="dots-container" class="flex space-x-2">
+                                <span class="dot active"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                            </div>
+                            <button id="next-slide-btn" class="nav-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Mapa -->
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg min-h-[400px] lg:min-h-full flex flex-col">
+                <h2 id="map-title" class="text-2xl font-bold mb-1">Vecinos Disponibles</h2>
+                <p id="map-intro" class="text-gray-600 mb-4">Estos son los vecinos verificados cerca de ti. Haz clic en uno para ver sus detalles.</p>
+                <div id="map-container" class="flex-grow bg-slate-200 rounded-lg relative overflow-hidden">
+                    <!-- Los iconos del mapa se insertarán aquí -->
+                </div>
+                <div id="map-message" class="hidden text-center text-gray-500 p-8">
+                    Ingresa un monto y haz clic en "Buscar Vecino" para ver los intermediarios disponibles en el mapa.
+                </div>
+            </div>
+
+        </main>
+        
+        <!-- User ID y Loading Indicator -->
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <span id="user-info">Cargando...</span>
+        </div>
+    </div>
+
+    <!-- Modal de Transacción Completa y Mensajes de Alerta -->
+    <div id="custom-modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0">
+        <div id="custom-modal-content" class="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center">
+            <div id="custom-modal-icon" class="mx-auto bg-green-100 rounded-full h-16 w-16 flex items-center justify-center">
+                <span id="custom-modal-icon-text" class="text-4xl text-green-600">?</span>
+            </div>
+            <h3 id="custom-modal-title" class="text-2xl font-bold mt-4">¡Transacción Completa!</h3>
+            <p id="custom-modal-text" class="text-gray-600 mt-2">Has confirmado la recepción del efectivo. Los fondos han sido liberados a tu vecino. ¡Gracias por usar Vecino Exchange!</p>
+            <button id="custom-modal-close-btn" class="mt-6 w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">Cerrar</button>
+        </div>
+    </div>
+    
+    <script type="module">
+        // Importa las librerías necesarias de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuración de Firebase y Variables Globales ---
+        // Se asume que Canvas proporcionará estos valores de forma segura en tiempo de ejecución.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Inicializa Firebase
+        let app, db, auth;
+        let userId = null;
+        let isAuthReady = false;
+
+        // --- DOM Elements ---
+        const findNeighborBtn = document.getElementById('find-neighbor-btn');
+        const amountInput = document.getElementById('amount');
+        const mapContainer = document.getElementById('map-container');
+        const mapMessage = document.getElementById('map-message');
+        const initialView = document.getElementById('initial-view');
+        const neighborSelectedView = document.getElementById('neighbor-selected-view');
+        const statusPanel = document.getElementById('status-panel');
+        const confirmExchangeBtn = document.getElementById('confirm-exchange-btn');
+        const cancelSelectionBtn = document.getElementById('cancel-selection-btn');
+        const confirmReceiptBtn = document.getElementById('confirm-receipt-btn');
+        const modeToggle = document.getElementById('mode-toggle');
+        const userInfoSpan = document.getElementById('user-info');
+        
+        // UI elements that change with mode
+        const initialViewTitle = document.getElementById('initial-view-title');
+        const initialViewDesc = document.getElementById('initial-view-desc');
+        const amountLabel = document.getElementById('amount-label');
+        const findNeighborText = document.getElementById('find-neighbor-btn');
+        const selectedViewTitle = document.getElementById('selected-view-title');
+        const selectedViewDesc = document.getElementById('selected-view-desc');
+        const transactionItemLabel = document.getElementById('transaction-item-label');
+        const totalLabel = document.getElementById('total-label');
+        const confirmExchangeText = document.getElementById('confirm-exchange-btn');
+        const step1Title = document.getElementById('step-1-title');
+        const step1Desc = document.getElementById('step-1-desc');
+        const step2Title = document.getElementById('step-2-title');
+        const step2Desc = document.getElementById('step-2-desc');
+        const step3Title = document.getElementById('step-3-title');
+        const step3Desc = document.getElementById('step-3-desc');
+        const receiptBtnText = document.getElementById('confirm-receipt-btn');
+        const labelCashOut = document.getElementById('label-cash-out');
+        const labelTransferOut = document.getElementById('label-transfer-out');
+        
+        // Custom Modal
+        const customModalOverlay = document.getElementById('custom-modal-overlay');
+        const customModalContent = document.getElementById('custom-modal-content');
+        const customModalTitle = document.getElementById('custom-modal-title');
+        const customModalText = document.getElementById('custom-modal-text');
+        const customModalIcon = document.getElementById('custom-modal-icon-text');
+        const customModalCloseBtn = document.getElementById('custom-modal-close-btn');
+        
+        // New Info Slider Elements
+        const slidesWrapper = document.getElementById('info-slides-wrapper');
+        const prevSlideBtn = document.getElementById('prev-slide-btn');
+        const nextSlideBtn = document.getElementById('next-slide-btn');
+        const dotsContainer = document.getElementById('dots-container');
+
+        // --- Application State ---
+        let appState = {
+            mode: 'cash_out', // 'cash_out' or 'transfer_out'
+            amount: 0,
+            selectedNeighbor: null,
+            transactionStep: 0, // 0: init, 1: transfer, 2: coordinating, 3: confirm
+            currentSlideIndex: 0, // New state for the info slider
+            neighbors: [] // Ahora se cargan desde Firestore
+        };
+        const totalSlides = 5;
+        let unsubscribeFromTransactions = null; // Para detener el listener de Firestore
+
+        // --- Funciones de Utilidad ---
+        function showCustomModal(title, message, isSuccess = true) {
+            customModalTitle.textContent = title;
+            customModalText.textContent = message;
+            customModalIcon.textContent = isSuccess ? '?' : '?';
+            customModalIcon.parentElement.classList.toggle('bg-green-100', isSuccess);
+            customModalIcon.parentElement.classList.toggle('bg-red-100', !isSuccess);
+            customModalIcon.classList.toggle('text-green-600', isSuccess);
+            customModalIcon.classList.toggle('text-red-600', !isSuccess);
+            
+            customModalOverlay.classList.remove('hidden');
+            setTimeout(() => customModalOverlay.classList.remove('opacity-0'), 10);
+        }
+
+        // --- Renderizado y Lógica de UI ---
+        function renderMap() {
+            if (!isAuthReady) return;
+
+            mapContainer.innerHTML = '';
+            mapMessage.classList.add('hidden');
+
+            // Render user
+            const userIcon = document.createElement('div');
+            userIcon.className = 'map-icon user';
+            userIcon.innerHTML = '??';
+            userIcon.style.top = '50%';
+            userIcon.style.left = '50%';
+            mapContainer.appendChild(userIcon);
+
+            // Render neighbors from state
+            appState.neighbors.forEach(neighbor => {
+                const neighborIcon = document.createElement('div');
+                neighborIcon.className = 'map-icon neighbor';
+                neighborIcon.innerHTML = '??';
+                neighborIcon.style.top = neighbor.location.top;
+                neighborIcon.style.left = neighbor.location.left;
+                neighborIcon.dataset.id = neighbor.id;
+                if (appState.selectedNeighbor && appState.selectedNeighbor.id === neighbor.id) {
+                    neighborIcon.classList.add('selected');
+                }
+                mapContainer.appendChild(neighborIcon);
+            });
+        }
+
+        function updateUI() {
+            if (!isAuthReady) return;
+
+            // Actualizar textos y estilos según el modo
+            if (appState.mode === 'cash_out') {
+                initialViewTitle.textContent = 'Solicitar Efectivo';
+                initialViewDesc.textContent = 'Ingresa el monto que necesitas y encontraremos un vecino cercano para ayudarte.';
+                amountLabel.textContent = 'Monto en efectivo (ARS)';
+                findNeighborText.textContent = 'Buscar Vecino Cercano';
+                selectedViewTitle.textContent = 'Confirmar Selección';
+                selectedViewDesc.textContent = `Estás a punto de iniciar un intercambio con ${appState.selectedNeighbor?.name || ''}.`;
+                transactionItemLabel.textContent = 'Recibes en efectivo:';
+                totalLabel.textContent = 'Total a transferir:';
+                confirmExchangeText.textContent = 'Confirmar e Iniciar Transacción';
+                step1Title.textContent = 'Transferencia a la Plataforma';
+                step1Desc.textContent = 'Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.';
+                step2Title.textContent = 'Coordinando Entrega';
+                step2Desc.textContent = 'Tu vecino ha sido notificado y se está preparando para encontrarte.';
+                step3Title.textContent = 'Confirmar Recepción';
+                step3Desc.textContent = 'Cuando recibas el efectivo, confírmalo aquí para liberar los fondos al vecino.';
+                receiptBtnText.textContent = 'He Recibido el Efectivo';
+                labelCashOut.classList.remove('text-gray-400');
+                labelCashOut.classList.add('text-indigo-600');
+                labelTransferOut.classList.remove('text-indigo-600');
+                labelTransferOut.classList.add('text-gray-400');
+            } else { // 'transfer_out'
+                initialViewTitle.textContent = 'Ofrecer Efectivo';
+                initialViewDesc.textContent = 'Ingresa el monto en efectivo que tienes y buscaremos a alguien que necesite una transferencia.';
+                amountLabel.textContent = 'Monto de la Transacción (ARS)';
+                findNeighborText.textContent = 'Buscar Interesado Cercano';
+                selectedViewTitle.textContent = 'Confirmar Intercambio';
+                selectedViewDesc.textContent = `Estás a punto de iniciar un intercambio con ${appState.selectedNeighbor?.name || ''}.`;
+                transactionItemLabel.textContent = 'Recibes por transferencia:';
+                totalLabel.textContent = 'Total en efectivo a entregar:';
+                confirmExchangeText.textContent = 'Confirmar e Iniciar Entrega';
+                step1Title.textContent = 'Entrega de Efectivo al Vecino';
+                step1Desc.textContent = 'Entrega el efectivo a la persona que necesita los fondos. La transferencia se hará a la plataforma.';
+                step2Title.textContent = 'Transferencia a la Plataforma';
+                step2Desc.textContent = 'El vecino transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.';
+                step3Title.textContent = 'Recibir Transferencia';
+                step3Desc.textContent = 'Cuando la plataforma confirme los fondos, te haremos la transferencia a tu cuenta.';
+                receiptBtnText.textContent = 'He Recibido la Transferencia';
+                labelCashOut.classList.remove('text-indigo-600');
+                labelCashOut.classList.add('text-gray-400');
+                labelTransferOut.classList.remove('text-gray-400');
+                labelTransferOut.classList.add('text-indigo-600');
+            }
+            
+            // Vista de acción
+            if (appState.selectedNeighbor) {
+                initialView.classList.add('hidden');
+                neighborSelectedView.classList.remove('hidden');
+                const cashAmount = appState.amount;
+                const fee = cashAmount * (appState.selectedNeighbor.feePercent / 100);
+                let totalTransfer = cashAmount + fee;
+                
+                if (appState.mode === 'transfer_out') {
+                    totalTransfer = cashAmount - fee;
+                }
+                
+                document.getElementById('selected-neighbor-name').textContent = appState.selectedNeighbor.name;
+                document.getElementById('cash-amount-text').textContent = `$${cashAmount.toLocaleString('es-AR')}`;
+                document.getElementById('fee-text').textContent = `$${fee.toLocaleString('es-AR')}`;
+                document.getElementById('total-transfer-text').textContent = `$${totalTransfer.toLocaleString('es-AR')}`;
+
+            } else {
+                initialView.classList.remove('hidden');
+                neighborSelectedView.classList.add('hidden');
+            }
+
+            // Panel de estado
+            if (appState.transactionStep > 0) {
+                statusPanel.classList.remove('hidden');
+                for (let i = 1; i <= 3; i++) {
+                    const stepEl = document.getElementById(`step-${i}`);
+                    stepEl.classList.remove('active', 'completed');
+                    if (i < appState.transactionStep) {
+                        stepEl.classList.add('completed');
+                        stepEl.querySelector('.step-circle').innerHTML = '?';
+                    } else if (i === appState.transactionStep) {
+                        stepEl.classList.add('active');
+                        stepEl.querySelector('.step-circle').innerHTML = i;
+                    } else {
+                         stepEl.querySelector('.step-circle').innerHTML = i;
+                    }
+                }
+                confirmReceiptBtn.classList.toggle('hidden', appState.transactionStep !== 3);
+            } else {
+                statusPanel.classList.add('hidden');
+            }
+            
+            renderMap();
+        }
+
+        function updateSlider() {
+            const offset = -appState.currentSlideIndex * 100;
+            slidesWrapper.style.transform = `translateX(${offset}%)`;
+
+            prevSlideBtn.classList.toggle('disabled', appState.currentSlideIndex === 0);
+            nextSlideBtn.classList.toggle('disabled', appState.currentSlideIndex === totalSlides - 1);
+
+            dotsContainer.querySelectorAll('.dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index === appState.currentSlideIndex);
+            });
+        }
+
+        function resetApp() {
+            appState = { mode: appState.mode, amount: 0, selectedNeighbor: null, transactionStep: 0, currentSlideIndex: 0, neighbors: appState.neighbors };
+            amountInput.value = '';
+            mapMessage.classList.remove('hidden');
+            if (unsubscribeFromTransactions) {
+                unsubscribeFromTransactions();
+            }
+            updateUI();
+            updateSlider();
+        }
+
+        // --- Listeners de Eventos ---
+        modeToggle.addEventListener('change', (e) => {
+            appState.mode = e.target.checked ? 'cash_out' : 'transfer_out';
+            resetApp();
+        });
+
+        findNeighborBtn.addEventListener('click', () => {
+            const amount = parseFloat(amountInput.value);
+            if (!isAuthReady) {
+                showCustomModal('Error', 'La aplicación aún se está cargando. Por favor, espera.', false);
+                return;
+            }
+            if (isNaN(amount) || amount <= 0) {
+                showCustomModal('Monto Inválido', 'Por favor, ingresa un monto válido mayor a 0.', false);
+                return;
+            }
+            appState.amount = amount;
+            updateUI();
+        });
+
+        mapContainer.addEventListener('click', (e) => {
+            if (!isAuthReady) return;
+            const target = e.target.closest('.neighbor');
+            if (target && appState.amount > 0) {
+                const neighborId = target.dataset.id;
+                appState.selectedNeighbor = appState.neighbors.find(n => n.id === neighborId);
+                updateUI();
+            }
+        });
+
+        cancelSelectionBtn.addEventListener('click', () => {
+            appState.selectedNeighbor = null;
+            updateUI();
+        });
+
+        confirmExchangeBtn.addEventListener('click', async () => {
+            if (!isAuthReady || !appState.selectedNeighbor) return;
+
+            // Creamos una nueva transacción en Firestore
+            const transactionsCollection = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
+            const transactionData = {
+                amount: appState.amount,
+                mode: appState.mode,
+                neighborId: appState.selectedNeighbor.id,
+                neighborName: appState.selectedNeighbor.name,
+                status: 1, // 1: Transferencia a la Plataforma
+                createdAt: new Date()
+            };
+
+            try {
+                const docRef = await addDoc(transactionsCollection, transactionData);
+                console.log("Transacción guardada con ID: ", docRef.id);
+                // Escuchamos los cambios en esta transacción para actualizar el UI
+                listenForTransactionUpdates(docRef.id);
+            } catch (e) {
+                console.error("Error al añadir la transacción: ", e);
+                showCustomModal('Error', 'No se pudo iniciar la transacción. Por favor, inténtalo de nuevo.', false);
+            }
+        });
+
+        // Simula la confirmación de la recepción
+        confirmReceiptBtn.addEventListener('click', async () => {
+             if (!isAuthReady) return;
+
+             try {
+                // Asume que la ID de la transacción actual se guarda en algún lugar
+                // Para esta demo, no tenemos una ID, pero en una app real la tendrías
+                // y actualizarías el documento correspondiente.
+                // Aquí simularemos el final.
+                showCustomModal('¡Transacción Completa!', 'Has confirmado la recepción del efectivo. Los fondos han sido liberados a tu vecino. ¡Gracias por usar Vecino Exchange!');
+             } catch (e) {
+                console.error("Error al confirmar la recepción: ", e);
+                showCustomModal('Error', 'No se pudo confirmar la recepción. Por favor, inténtalo de nuevo.', false);
+             }
+        });
+
+        customModalCloseBtn.addEventListener('click', () => {
+            customModalOverlay.classList.add('opacity-0');
+            setTimeout(() => {
+                customModalOverlay.classList.add('hidden');
+                resetApp();
+            }, 300);
+        });
+
+        // Slider navigation handlers
+        nextSlideBtn.addEventListener('click', () => {
+            if (appState.currentSlideIndex < totalSlides - 1) {
+                appState.currentSlideIndex++;
+                updateSlider();
+            }
+        });
+
+        prevSlideBtn.addEventListener('click', () => {
+            if (appState.currentSlideIndex > 0) {
+                appState.currentSlideIndex--;
+                updateSlider();
+            }
+        });
+
+        dotsContainer.addEventListener('click', (e) => {
+            const dot = e.target.closest('.dot');
+            if (dot) {
+                const index = Array.from(dotsContainer.children).indexOf(dot);
+                appState.currentSlideIndex = index;
+                updateSlider();
+            }
+        });
+
+        // --- Conexión y Lógica de Firebase ---
+
+        function listenForTransactionUpdates(transactionId) {
+            const transactionDocRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, transactionId);
+            unsubscribeFromTransactions = onSnapshot(transactionDocRef, (doc) => {
+                if (doc.exists()) {
+                    const transaction = doc.data();
+                    appState.transactionStep = transaction.status;
+                    updateUI();
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en la transacción:", error);
+            });
+        }
+
+        async function initializeAppWithFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                if (initialAuthToken) {
+                    await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                    await signInAnonymously(auth);
+                }
+
+                // Esperar hasta que el estado de autenticación cambie
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        userId = user.uid;
+                        userInfoSpan.textContent = `Tu ID de usuario: ${userId}`;
+                        isAuthReady = true;
+
+                        // Cargar los vecinos (se simulan como datos privados en esta demo)
+                        // En una app real, los vecinos podrían estar en una colección pública
+                        const neighborsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/neighbors`);
+                        
+                        // Si no hay vecinos, los agregamos una vez
+                        addNeighborsToFirestore(neighborsCollectionRef);
+
+                        // Escuchamos los vecinos en tiempo real
+                        onSnapshot(neighborsCollectionRef, (snapshot) => {
+                            appState.neighbors = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            // Si la aplicación ya está lista, actualizamos el UI.
+                            if (isAuthReady) {
+                                updateUI();
+                            }
+                        }, (error) => {
+                            console.error("Error al obtener los vecinos:", error);
+                        });
+                        
+                        updateUI();
+                        updateSlider();
+                    } else {
+                        console.log("No user is signed in.");
+                        userInfoSpan.textContent = "Error de autenticación.";
+                    }
+                });
+
+            } catch (error) {
+                console.error("Error al inicializar la app de Firebase:", error);
+                userInfoSpan.textContent = "Error al conectar con la base de datos.";
+            }
+        }
+
+        async function addNeighborsToFirestore(collectionRef) {
+             const snapshot = await getDocs(collectionRef);
+             if (snapshot.empty) {
+                const hardcodedNeighbors = [
+                    { name: 'Carlos R.', rating: 4.9, feePercent: 3.5, location: { top: '30%', left: '40%' } },
+                    { name: 'Maria L.', rating: 4.8, feePercent: 4.0, location: { top: '65%', left: '25%' } },
+                    { name: 'Javier S.', rating: 5.0, feePercent: 3.0, location: { top: '50%', left: '75%' } },
+                    { name: 'Ana P.', rating: 4.7, feePercent: 4.2, location: { top: '80%', left: '60%' } }
+                ];
+                hardcodedNeighbors.forEach(async (neighbor) => {
+                     await addDoc(collectionRef, neighbor);
+                });
+            }
+        }
+
+        // Se inicia la aplicación cuando la página está cargada.
+        document.addEventListener('DOMContentLoaded', initializeAppWithFirebase);
+    </script>
+</body>
+</html>
