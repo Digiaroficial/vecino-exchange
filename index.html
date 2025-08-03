@@ -446,8 +446,8 @@
         // Se asume que Canvas proporcionará estos valores de forma segura en tiempo de ejecución.
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
-            // --- TU CONFIGURACIÓN DE FIREBASE HA SIDO INSERTADA AQUÍ ---
-            apiKey: "AIzaSyC92vhMEwdaeHvWeriFM91bQEHhWADhRNs",
+            // --- ¡IMPORTANTE! VERIFICA ESTA CONFIGURACIÓN CON TU CONSOLA DE FIREBASE ---
+            apiKey: "AIzaSyC92vhMEwdaeHvWeriFM91bQEHwYADhRNs",
             authDomain: "vecinos-exchange.firebaseapp.com",
             projectId: "vecinos-exchange",
             storageBucket: "vecinos-exchange.firebasestorage.app",
@@ -698,7 +698,7 @@
             if (appState.selectedNeighbor) {
                 initialView.classList.add('hidden');
                 neighborSelectedView.classList.remove('hidden');
-                const cashAmount = parseFloat(appState.amount);
+                const cashAmount = parseFloat(amountInput.value);
                 const fee = cashAmount * (appState.selectedNeighbor.feePercent / 100);
                 let totalTransfer = cashAmount + fee;
                 
@@ -1191,6 +1191,12 @@
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
                 db = getFirestore(app);
+
+                if (!db || !auth) {
+                    console.error("Firebase no se inicializó correctamente. Por favor, verifica la configuración de tu proyecto.");
+                    userInfoSpan.textContent = "Error de conexión. Revisa la configuración de Firebase.";
+                    return;
+                }
 
                 // Escucha los cambios de estado de autenticación
                 onAuthStateChanged(auth, async (user) => {
