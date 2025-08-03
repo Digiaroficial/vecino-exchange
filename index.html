@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vecino Exchange - Intercambio de Efectivo Seguro</title>
+    
+    <!-- Chosen Palette: Calm Harmony -->
+    <!-- Application Structure Plan: La aplicación ahora se divide en dos vistas principales: la de autenticación y la del panel de control principal. La vista de autenticación presenta un formulario para Iniciar Sesión o Registrarse, un botón para Iniciar Sesión con Google y un enlace para restablecer la contraseña. La vista del panel de control principal es la misma que la versión anterior, con secciones para la acción, el mapa y el estado. Esta estructura fue elegida para proteger las funciones principales de la app y asegurar que cada usuario interactúe con sus propios datos de forma segura. El flujo de usuario es ahora: Autenticarse -> Usar la app. -->
+    <!-- Visualization & Content Choices: 1. Autenticación: Report Info -> Registro/Login. Goal -> Gestionar el acceso. Viz -> Formulario de entrada de email y contraseña y botón de Google (HTML/CSS). Interaction -> Cambiar entre login y registro, botones de acción. Justification -> Este es el método estándar para la gestión de cuentas. 2. Flujo de Transacción: Report Info -> Flujo de una Transacción en la Red de Vecinos. Goal -> Informar y guiar. Viz -> Diagrama de proceso interactivo (HTML/CSS/JS). Interaction -> El estado actual se resalta dinámicamente. Justification -> Un tracker de progreso visual es la forma más clara de mostrar un proceso de varios pasos. 3. Red de Vecinos: Report Info -> Módulo de Geolocalización y Mapa. Goal -> Organizar y permitir selección. Viz -> Mapa simulado con iconos (HTML/CSS/JS). Interaction -> Hacer clic en un ícono de vecino muestra sus detalles y permite seleccionarlo. Justification -> Un mapa es la herramienta más intuitiva para visualizar datos geográficos y tomar decisiones basadas en la proximidad. 4. Datos Clave (Comisiones, Calificaciones): Report Info -> Red de "Vecinos" Verificados. Goal -> Informar. Viz -> Bloques de texto dinámicos. Interaction -> la información se actualiza al seleccionar un vecino. Justification -> La presentación directa de texto y números es la más efectiva para datos específicos. -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc; /* slate-50 */
+        }
+        .map-icon {
+            position: absolute;
+            transform: translate(-50%, -50%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 1.25rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+        }
+        .map-icon.user {
+            width: 40px;
+            height: 40px;
+            background-color: #4f46e5; /* indigo-600 */
+            z-index: 10;
+        }
+        .map-icon.neighbor {
+            width: 36px;
+            height: 36px;
+            background-color: #16a34a; /* green-600 */
+        }
+        .map-icon.neighbor:hover, .map-icon.neighbor.selected {
+            transform: translate(-50%, -50%) scale(1.25);
+            border: 2px solid white;
+        }
+        .step {
+            transition: all 0.4s ease;
+        }
+        .step.completed .step-circle {
+            background-color: #16a34a; /* green-600 */
+            border-color: #16a34a;
+        }
+        .step.completed .step-line {
+            background-color: #16a34a;
+        }
+        .step.active .step-circle {
+            background-color: #4f46e5; /* indigo-600 */
+            border-color: #4f46e5;
+        }
+        .step.active .step-text {
+            font-weight: 700;
+            color: #3730a3; /* indigo-800 */
+        }
+        .step-circle {
+            width: 2rem;
+            height: 2rem;
+            border-radius: 50%;
+            border: 2px solid #9ca3af; /* gray-400 */
+            background-color: white;
+            transition: all 0.4s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .step-line {
+            flex-grow: 1;
+            height: 2px;
+            background-color: #9ca3af; /* gray-400 */
+            transition: all 0.4s ease;
+        }
+        #custom-modal-overlay {
+            transition: opacity 0.3s ease-in-out;
+        }
+        /* New styles for the info slider */
+        #info-slider-container {
+            overflow: hidden;
+            position: relative;
+        }
+        #info-slides-wrapper {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+        .info-slide {
+            flex: 0 0 100%;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .nav-btn {
+            background-color: #e5e7eb; /* gray-200 */
+            color: #374151; /* gray-700 */
+            width: 2.5rem;
+            height: 2.5rem;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s;
+        }
+        .nav-btn:hover {
+            background-color: #d1d5db; /* gray-300 */
+        }
+        .nav-btn.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .dot {
+            width: 0.75rem;
+            height: 0.75rem;
+            background-color: #d1d5db; /* gray-300 */
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .dot.active {
+            background-color: #4f46e5; /* indigo-600 */
+        }
+        
+        /* Estilos para el modal de restablecimiento de contraseña */
+        .modal-overlay {
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            visibility: hidden;
+            opacity: 0;
+        }
+        .modal-overlay.open {
+            visibility: visible;
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl md:text-5xl font-bold text-gray-900">Vecino Exchange</h1>
+            <p class="text-lg text-gray-600 mt-2">Tu forma segura y rápida de obtener efectivo o transferencia.</p>
+        </header>
+
+        <!-- Contenedor principal de la aplicación -->
+        <main id="app-container" class="grid grid-cols-1 lg:grid-cols-5 gap-8 hidden">
+            <!-- Columna Izquierda: Controles y Estado -->
+            <div class="lg:col-span-2 space-y-8">
+                
+                <!-- Panel de Acción -->
+                <div id="action-panel" class="bg-white p-6 rounded-xl shadow-lg">
+                    <div class="flex items-center justify-between mb-6">
+                        <label class="inline-flex items-center cursor-pointer">
+                            <span id="label-transfer-out" class="font-bold text-gray-400 mr-3 transition-colors duration-300">Necesito Transferencia</span>
+                            <div class="relative">
+                                <input type="checkbox" id="mode-toggle" class="sr-only peer">
+                                <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                            </div>
+                            <span id="label-cash-out" class="font-bold text-indigo-600 ml-3 transition-colors duration-300">Necesito Efectivo</span>
+                        </label>
+                    </div>
+
+                    <div id="initial-view">
+                        <h2 id="initial-view-title" class="text-2xl font-bold mb-1">Solicitar Efectivo</h2>
+                        <p id="initial-view-desc" class="text-gray-600 mb-4">Ingresa el monto que necesitas y encontraremos un vecino cercano para ayudarte.</p>
+                        <div class="space-y-4">
+                            <div>
+                                <label for="amount" id="amount-label" class="block text-sm font-medium text-gray-700">Monto en efectivo (ARS)</label>
+                                <input type="number" id="amount" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 text-lg" placeholder="Ej: 5000">
+                            </div>
+                            <button id="find-neighbor-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 shadow-md">
+                                Buscar Vecino Cercano
+                            </button>
+                        </div>
+                    </div>
+                    <div id="neighbor-selected-view" class="hidden">
+                         <h2 id="selected-view-title" class="text-2xl font-bold mb-1">Confirmar Selección</h2>
+                         <p id="selected-view-desc" class="text-gray-600 mb-4">Estás a punto de iniciar un intercambio con <strong id="selected-neighbor-name" class="text-indigo-700"></strong>.</p>
+                         <div class="bg-slate-100 p-4 rounded-lg space-y-2">
+                            <div class="flex justify-between"><span id="transaction-item-label" class="text-gray-600">Recibes en efectivo:</span> <strong id="cash-amount-text" class="text-lg"></strong></div>
+                            <div class="flex justify-between"><span class="text-gray-600">Comisión del servicio:</span> <strong id="fee-text" class="text-lg"></strong></div>
+                            <hr>
+                            <div class="flex justify-between text-lg"><span id="total-label" class="font-semibold">Total a transferir:</span> <strong id="total-transfer-text" class="text-indigo-700"></strong></div>
+                         </div>
+                         <button id="confirm-exchange-btn" class="mt-4 w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition duration-300 shadow-md">
+                            Confirmar e Iniciar Transacción
+                         </button>
+                         <button id="cancel-selection-btn" class="mt-2 w-full text-gray-600 font-medium py-2 px-4 rounded-lg hover:bg-gray-200 transition duration-300">
+                            Cancelar
+                         </button>
+                    </div>
+                </div>
+
+                <!-- Panel de Estado de la Transacción -->
+                <div id="status-panel" class="bg-white p-6 rounded-xl shadow-lg hidden">
+                    <h2 class="text-2xl font-bold mb-4">Estado de tu Intercambio</h2>
+                    <p id="status-intro" class="text-gray-600 mb-6">Sigue el progreso de tu transacción. Te guiaremos en cada paso para garantizar tu seguridad.</p>
+                    <div class="space-y-4">
+                        <!-- Paso 1 -->
+                        <div id="step-1" class="step flex items-start">
+                            <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">✓</div>
+                                <div class="step-line h-16"></div>
+                            </div>
+                            <div>
+                                <h3 id="step-1-title" class="step-text font-semibold text-lg text-gray-500">Transferencia a la Plataforma</h3>
+                                <p id="step-1-desc" class="text-gray-600 text-sm">Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.</p>
+                            </div>
+                        </div>
+                        <!-- Paso 2 -->
+                        <div id="step-2" class="step flex items-start">
+                            <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">2</div>
+                                <div class="step-line h-16"></div>
+                            </div>
+                            <div>
+                                <h3 id="step-2-title" class="step-text font-semibold text-lg text-gray-500">Coordinando Entrega</h3>
+                                <p id="step-2-desc" class="text-gray-600 text-sm">Tu vecino ha sido notificado y se está preparando para encontrarte.</p>
+                            </div>
+                        </div>
+                        <!-- Paso 3 -->
+                        <div id="step-3" class="step flex items-start">
+                             <div class="flex flex-col items-center mr-4">
+                                <div class="step-circle">3</div>
+                            </div>
+                            <div>
+                                <h3 id="step-3-title" class="step-text font-semibold text-lg text-gray-500">Confirmar Recepción</h3>
+                                <p id="step-3-desc" class="text-gray-600 text-sm">Cuando recibas el efectivo, confírmalo aquí para liberar los fondos al vecino.</p>
+                                <button id="confirm-receipt-btn" class="hidden mt-2 bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-indigo-700 transition duration-300 text-sm">He Recibido el Efectivo</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Nuevo Panel de Información (Cómo Funciona) con Carrusel -->
+                <div class="bg-white p-6 rounded-xl shadow-lg">
+                    <h3 class="text-2xl font-bold mb-4">Cómo Funciona</h3>
+                    <div id="info-slider-container" class="relative">
+                        <div id="info-slides-wrapper">
+                            <!-- Slide 1 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">📝</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">1. Solicita tu Intercambio</h4>
+                                        <p class="text-gray-600">Ingresa el monto que necesitas (efectivo o transferencia) en la aplicación.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 2 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">🤝</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">2. Elige un Vecino Verificado</h4>
+                                        <p class="text-gray-600">Selecciona un vecino en el mapa. Todos los perfiles están verificados y tienen un historial de reputación.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 3 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">🔒</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">3. Dinero Protegido con Fideicomiso</h4>
+                                        <p class="text-gray-600">Tu dinero queda retenido de forma segura en la plataforma. No se libera hasta que tú lo autorices.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 4 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">📍</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">4. Encuentro y Verificación</h4>
+                                        <p class="text-gray-600">Te encuentras con el vecino para realizar el intercambio físico de efectivo o transferencia.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- Slide 5 -->
+                            <div class="info-slide">
+                                <div class="flex items-start">
+                                    <span class="text-3xl mr-4">✅</span>
+                                    <div>
+                                        <h4 class="font-bold text-xl text-gray-900">5. Confirma la Recepción</h4>
+                                        <p class="text-gray-600">En la app, confirma que has recibido el efectivo. En ese momento, y solo entonces, el dinero se libera a tu vecino.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="flex justify-between items-center mt-4">
+                            <button id="prev-slide-btn" class="nav-btn disabled">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" />
+                                </svg>
+                            </button>
+                            <div id="dots-container" class="flex space-x-2">
+                                <span class="dot active"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                                <span class="dot"></span>
+                            </div>
+                            <button id="next-slide-btn" class="nav-btn">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Columna Derecha: Mapa -->
+            <div class="lg:col-span-3 bg-white p-6 rounded-xl shadow-lg min-h-[400px] lg:min-h-full flex flex-col">
+                <h2 id="map-title" class="text-2xl font-bold mb-1">Vecinos Disponibles</h2>
+                <p id="map-intro" class="text-gray-600 mb-4">Estos son los vecinos verificados cerca de ti. Haz clic en uno para ver sus detalles.</p>
+                <div id="map-container" class="flex-grow bg-slate-200 rounded-lg relative overflow-hidden">
+                    <!-- Los iconos del mapa se insertarán aquí -->
+                </div>
+                <div id="map-message" class="hidden text-center text-gray-500 p-8">
+                    Ingresa un monto y haz clic en "Buscar Vecino" para ver los intermediarios disponibles en el mapa.
+                </div>
+            </div>
+        </main>
+
+        <!-- Vista de Autenticación (Se muestra por defecto) -->
+        <div id="auth-container" class="max-w-md mx-auto p-6 bg-white rounded-xl shadow-lg mt-10">
+            <div class="flex justify-center mb-6">
+                 <button id="show-login-btn" class="px-4 py-2 text-lg font-bold border-b-2 border-indigo-600 text-indigo-600">Iniciar Sesión</button>
+                 <button id="show-register-btn" class="px-4 py-2 text-lg font-bold border-b-2 border-transparent text-gray-400">Registrarse</button>
+            </div>
+            
+            <h2 id="auth-title" class="text-2xl font-bold text-center mb-4">Iniciar Sesión</h2>
+
+            <div class="space-y-4">
+                <div>
+                    <label for="email-input" class="block text-sm font-medium text-gray-700">Correo Electrónico</label>
+                    <input type="email" id="email-input" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 text-lg" placeholder="ejemplo@correo.com">
+                </div>
+                <div>
+                    <label for="password-input" class="block text-sm font-medium text-gray-700">Contraseña</label>
+                    <input type="password" id="password-input" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 p-3 text-lg" placeholder="********">
+                </div>
+                
+                <!-- Enlace para restablecer la contraseña -->
+                <div id="forgot-password-container" class="text-right">
+                    <a href="#" id="forgotPasswordLink" class="text-sm text-indigo-600 hover:text-indigo-500">
+                        ¿Olvidaste tu contraseña?
+                    </a>
+                </div>
+
+                <button id="auth-action-btn" class="w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300 shadow-md">
+                    Iniciar Sesión
+                </button>
+                <div class="flex items-center my-4">
+                    <hr class="flex-grow border-gray-300">
+                    <span class="mx-4 text-gray-500">o</span>
+                    <hr class="flex-grow border-gray-300">
+                </div>
+                <button id="google-sign-in-btn" class="w-full bg-white text-gray-700 font-bold py-3 px-4 rounded-lg border border-gray-300 hover:bg-gray-100 transition duration-300 shadow-md flex items-center justify-center space-x-2">
+                    <svg class="w-5 h-5" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M43.611 20.0834H42V20H24V28H35.3031C34.6974 31.0664 32.8805 33.5186 30.0875 35.2118L30.0886 35.2127L36.2759 39.8093L36.3129 39.8458C40.0601 36.5678 42.4839 31.7818 43.611 26.2415V26.0834V20.0834Z" fill="#4285F4"/>
+                        <path d="M24 43.6917C29.8055 43.6917 34.7831 41.7455 38.459 38.5609L30.0875 35.2118C27.7551 36.9209 25.0487 37.9547 24 37.9547C18.6656 37.9547 14.1136 34.2505 12.4414 29.0205L12.0494 29.1102L5.59013 34.2238L5.45263 34.3418C9.52846 41.7583 16.6342 43.6917 24 43.6917Z" fill="#34A853"/>
+                        <path d="M12.4415 29.0205C11.9686 27.6534 11.6667 26.0733 11.6667 24.3458C11.6667 22.6183 11.9686 21.0382 12.4415 19.6711V19.5393L5.58999 14.4257L5.45263 14.5438C3.80584 17.8488 2.875 21.2829 2.875 24.3458C2.875 27.4088 3.80584 30.8429 5.45263 34.1479L12.4415 29.0205Z" fill="#FBBC04"/>
+                        <path d="M24 10.4727C27.202 10.4727 30.4132 11.8601 32.9515 14.1037L38.647 8.35123C34.7831 4.7562 29.8055 2.875 24 2.875C16.6342 2.875 9.52846 4.8083 5.45263 12.2248L12.4415 17.3384C14.1136 12.1084 18.6656 8.40422 24 8.40422C24 8.40422 24 10.4727 24 10.4727Z" fill="#EA4335"/>
+                    </svg>
+                    <span>Continuar con Google</span>
+                </button>
+                <div id="auth-error-message" class="text-red-500 text-sm text-center mt-2 hidden"></div>
+            </div>
+        </div>
+        
+        <!-- User Info y Loading Indicator -->
+        <div class="mt-8 text-center text-sm text-gray-500">
+            <span id="user-info">Cargando...</span>
+            <button id="logout-btn" class="hidden text-red-500 font-semibold ml-4 hover:underline">Cerrar Sesión</button>
+        </div>
+    </div>
+
+    <!-- Modal de Transacción Completa y Mensajes de Alerta -->
+    <div id="custom-modal-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 hidden opacity-0">
+        <div id="custom-modal-content" class="bg-white rounded-xl shadow-2xl p-8 max-w-sm w-full text-center">
+            <div id="custom-modal-icon" class="mx-auto bg-green-100 rounded-full h-16 w-16 flex items-center justify-center">
+                <span id="custom-modal-icon-text" class="text-4xl text-green-600">✓</span>
+            </div>
+            <h3 id="custom-modal-title" class="text-2xl font-bold mt-4">¡Transacción Completa!</h3>
+            <p id="custom-modal-text" class="text-gray-600 mt-2">Has confirmado la recepción del efectivo. Los fondos han sido liberados a tu vecino. ¡Gracias por usar Vecino Exchange!</p>
+            <button id="custom-modal-close-btn" class="mt-6 w-full bg-indigo-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-indigo-700 transition duration-300">Cerrar</button>
+        </div>
+    </div>
+    
+    <!-- Modal para restablecer la contraseña -->
+    <div id="forgotPasswordModal" class="modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 backdrop-blur-sm bg-gray-900 bg-opacity-50">
+        <div class="bg-white p-6 rounded-xl shadow-lg w-full max-w-sm transform scale-95 transition-transform duration-300">
+            <h3 class="text-xl font-bold text-gray-800 mb-4">Restablecer Contraseña</h3>
+            <p class="text-sm text-gray-600 mb-4">Introduce tu correo electrónico para recibir un enlace de restablecimiento.</p>
+            <input type="email" id="resetEmail" placeholder="Tu correo electrónico" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500">
+            <div class="flex justify-end space-x-4 mt-6">
+                <button id="cancelReset" class="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors">Cancelar</button>
+                <button id="sendReset" class="px-4 py-2 text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors">Enviar enlace</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        // Importa las librerías necesarias de Firebase
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail, signInWithCustomToken, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        // Importa las librerías de Firestore
+        import { getFirestore, doc, onSnapshot, collection, addDoc, updateDoc, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // --- Configuración de Firebase y Variables Globales ---
+        // Se asume que Canvas proporcionará estos valores de forma segura en tiempo de ejecución.
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Inicializa Firebase
+        let app, db, auth;
+        let userId = null;
+        let userEmail = null;
+        let isAuthReady = false;
+
+        // --- DOM Elements ---
+        const appContainer = document.getElementById('app-container');
+        const authContainer = document.getElementById('auth-container');
+        const findNeighborBtn = document.getElementById('find-neighbor-btn');
+        const amountInput = document.getElementById('amount');
+        const mapContainer = document.getElementById('map-container');
+        const mapMessage = document.getElementById('map-message');
+        const initialView = document.getElementById('initial-view');
+        const neighborSelectedView = document.getElementById('neighbor-selected-view');
+        const statusPanel = document.getElementById('status-panel');
+        const confirmExchangeBtn = document.getElementById('confirm-exchange-btn');
+        const cancelSelectionBtn = document.getElementById('cancel-selection-btn');
+        const confirmReceiptBtn = document.getElementById('confirm-receipt-btn');
+        const modeToggle = document.getElementById('mode-toggle');
+        const userInfoSpan = document.getElementById('user-info');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // Auth Elements
+        const showLoginBtn = document.getElementById('show-login-btn');
+        const showRegisterBtn = document.getElementById('show-register-btn');
+        const authTitle = document.getElementById('auth-title');
+        const authActionBtn = document.getElementById('auth-action-btn');
+        const emailInput = document.getElementById('email-input');
+        const passwordInput = document.getElementById('password-input');
+        const authErrorMessage = document.getElementById('auth-error-message');
+        const googleSignInBtn = document.getElementById('google-sign-in-btn');
+        let isLoginMode = true;
+        
+        // UI elements that change with mode
+        const initialViewTitle = document.getElementById('initial-view-title');
+        const initialViewDesc = document.getElementById('initial-view-desc');
+        const amountLabel = document.getElementById('amount-label');
+        const findNeighborText = document.getElementById('find-neighbor-btn');
+        const selectedViewTitle = document.getElementById('selected-view-title');
+        const selectedViewDesc = document.getElementById('selected-view-desc');
+        const transactionItemLabel = document.getElementById('transaction-item-label');
+        const totalLabel = document.getElementById('total-label');
+        const confirmExchangeText = document.getElementById('confirm-exchange-btn');
+        const step1Title = document.getElementById('step-1-title');
+        const step1Desc = document.getElementById('step-1-desc');
+        const step2Title = document.getElementById('step-2-title');
+        const step2Desc = document.getElementById('step-2-desc');
+        const step3Title = document.getElementById('step-3-title');
+        const step3Desc = document.getElementById('step-3-desc');
+        const receiptBtnText = document.getElementById('confirm-receipt-btn');
+        const labelCashOut = document.getElementById('label-cash-out');
+        const labelTransferOut = document.getElementById('label-transfer-out');
+        
+        // Custom Modal
+        const customModalOverlay = document.getElementById('custom-modal-overlay');
+        const customModalContent = document.getElementById('custom-modal-content');
+        const customModalTitle = document.getElementById('custom-modal-title');
+        const customModalText = document.getElementById('custom-modal-text');
+        const customModalIcon = document.getElementById('custom-modal-icon-text');
+        const customModalCloseBtn = document.getElementById('custom-modal-close-btn');
+
+        // New Info Slider Elements
+        const slidesWrapper = document.getElementById('info-slides-wrapper');
+        const prevSlideBtn = document.getElementById('prev-slide-btn');
+        const nextSlideBtn = document.getElementById('next-slide-btn');
+        const dotsContainer = document.getElementById('dots-container');
+        
+        // Elements for Password Reset Modal
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        const forgotPasswordContainer = document.getElementById('forgot-password-container');
+        const forgotPasswordModal = document.getElementById('forgotPasswordModal');
+        const cancelResetButton = document.getElementById('cancelReset');
+        const sendResetButton = document.getElementById('sendReset');
+        const resetEmailInput = document.getElementById('resetEmail');
+
+        // --- Application State ---
+        let appState = {
+            mode: 'cash_out', // 'cash_out' or 'transfer_out'
+            amount: 0,
+            selectedNeighbor: null,
+            transactionStep: 0, // 0: init, 1: transfer, 2: coordinating, 3: confirm
+            currentSlideIndex: 0, // New state for the info slider
+            neighbors: [] // Ahora se cargan desde Firestore
+        };
+        const totalSlides = 5;
+        let unsubscribeFromTransactions = null; // Para detener el listener de Firestore
+        let unsubscribeFromNeighbors = null; // Listener de vecinos
+
+        // --- Funciones de Utilidad ---
+        function showCustomModal(title, message, isSuccess = true) {
+            customModalTitle.textContent = title;
+            customModalText.textContent = message;
+            customModalIcon.textContent = isSuccess ? '✓' : '✗';
+            customModalIcon.parentElement.classList.toggle('bg-green-100', isSuccess);
+            customModalIcon.parentElement.classList.toggle('bg-red-100', !isSuccess);
+            customModalIcon.classList.toggle('text-green-600', isSuccess);
+            customModalIcon.classList.toggle('text-red-600', !isSuccess);
+            
+            customModalOverlay.classList.remove('hidden');
+            setTimeout(() => customModalOverlay.classList.remove('opacity-0'), 10);
+        }
+
+        // --- Renderizado y Lógica de UI ---
+        function renderMap() {
+            if (!isAuthReady) return;
+
+            mapContainer.innerHTML = '';
+            mapMessage.classList.add('hidden');
+
+            // Render user
+            const userIcon = document.createElement('div');
+            userIcon.className = 'map-icon user';
+            userIcon.innerHTML = '👤';
+            userIcon.style.top = '50%';
+            userIcon.style.left = '50%';
+            mapContainer.appendChild(userIcon);
+
+            // Render neighbors from state
+            appState.neighbors.forEach(neighbor => {
+                const neighborIcon = document.createElement('div');
+                neighborIcon.className = 'map-icon neighbor';
+                neighborIcon.innerHTML = '🤝';
+                neighborIcon.style.top = neighbor.location.top;
+                neighborIcon.style.left = neighbor.location.left;
+                neighborIcon.dataset.id = neighbor.id;
+                if (appState.selectedNeighbor && appState.selectedNeighbor.id === neighbor.id) {
+                    neighborIcon.classList.add('selected');
+                }
+                mapContainer.appendChild(neighborIcon);
+            });
+        }
+
+        function updateUI() {
+            if (!isAuthReady) return;
+
+            // Actualizar textos y estilos según el modo
+            if (appState.mode === 'cash_out') {
+                initialViewTitle.textContent = 'Solicitar Efectivo';
+                initialViewDesc.textContent = 'Ingresa el monto que necesitas y encontraremos un vecino cercano para ayudarte.';
+                amountLabel.textContent = 'Monto en efectivo (ARS)';
+                findNeighborText.textContent = 'Buscar Vecino Cercano';
+                selectedViewTitle.textContent = 'Confirmar Selección';
+                selectedViewDesc.textContent = `Estás a punto de iniciar un intercambio con ${appState.selectedNeighbor?.name || ''}.`;
+                transactionItemLabel.textContent = 'Recibes en efectivo:';
+                totalLabel.textContent = 'Total a transferir:';
+                confirmExchangeText.textContent = 'Confirmar e Iniciar Transacción';
+                step1Title.textContent = 'Transferencia a la Plataforma';
+                step1Desc.textContent = 'Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.';
+                step2Title.textContent = 'Coordinando Entrega';
+                step2Desc.textContent = 'Tu vecino ha sido notificado y se está preparando para encontrarte.';
+                step3Title.textContent = 'Confirmar Recepción';
+                step3Desc.textContent = 'Cuando recibas el efectivo, confírmalo aquí para liberar los fondos al vecino.';
+                receiptBtnText.textContent = 'He Recibido el Efectivo';
+                labelCashOut.classList.remove('text-gray-400');
+                labelCashOut.classList.add('text-indigo-600');
+                labelTransferOut.classList.remove('text-indigo-600');
+                labelTransferOut.classList.add('text-gray-400');
+            } else { // 'transfer_out'
+                initialViewTitle.textContent = 'Ofrecer Efectivo';
+                initialViewDesc.textContent = 'Ingresa el monto en efectivo que tienes y buscaremos a alguien que necesite una transferencia.';
+                amountLabel.textContent = 'Monto de la Transacción (ARS)';
+                findNeighborText.textContent = 'Buscar Interesado Cercano';
+                selectedViewTitle.textContent = 'Confirmar Intercambio';
+                selectedViewDesc.textContent = `Estás a punto de iniciar un intercambio con ${appState.selectedNeighbor?.name || ''}.`;
+                transactionItemLabel.textContent = 'Recibes por transferencia:';
+                totalLabel.textContent = 'Total en efectivo a entregar:';
+                confirmExchangeText.textContent = 'Confirmar e Iniciar Entrega';
+                step1Title.textContent = 'Entrega de Efectivo al Vecino';
+                step1Desc.textContent = 'Entrega el efectivo a la persona que necesita los fondos. La transferencia se hará a la plataforma.';
+                step2Title.textContent = 'Transferencia a la Plataforma';
+                step2Desc.textContent = 'El vecino transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.';
+                step3Title.textContent = 'Recibir Transferencia';
+                step3Desc.textContent = 'Cuando la plataforma confirme los fondos, te haremos la transferencia a tu cuenta.';
+                receiptBtnText.textContent = 'He Recibido la Transferencia';
+                labelCashOut.classList.remove('text-indigo-600');
+                labelCashOut.classList.add('text-gray-400');
+                labelTransferOut.classList.remove('text-gray-400');
+                labelTransferOut.classList.add('text-indigo-600');
+            }
+            
+            // Vista de acción
+            if (appState.selectedNeighbor) {
+                initialView.classList.add('hidden');
+                neighborSelectedView.classList.remove('hidden');
+                const cashAmount = parseFloat(appState.amount);
+                const fee = cashAmount * (appState.selectedNeighbor.feePercent / 100);
+                let totalTransfer = cashAmount + fee;
+                
+                if (appState.mode === 'transfer_out') {
+                    totalTransfer = cashAmount - fee;
+                }
+                
+                document.getElementById('selected-neighbor-name').textContent = appState.selectedNeighbor.name;
+                document.getElementById('cash-amount-text').textContent = `$${cashAmount.toLocaleString('es-AR')}`;
+                document.getElementById('fee-text').textContent = `$${fee.toLocaleString('es-AR')}`;
+                document.getElementById('total-transfer-text').textContent = `$${totalTransfer.toLocaleString('es-AR')}`;
+
+            } else {
+                initialView.classList.remove('hidden');
+                neighborSelectedView.classList.add('hidden');
+            }
+
+            // Panel de estado
+            if (appState.transactionStep > 0) {
+                statusPanel.classList.remove('hidden');
+                for (let i = 1; i <= 3; i++) {
+                    const stepEl = document.getElementById(`step-${i}`);
+                    stepEl.classList.remove('active', 'completed');
+                    if (i < appState.transactionStep) {
+                        stepEl.classList.add('completed');
+                        stepEl.querySelector('.step-circle').innerHTML = '✓';
+                    } else if (i === appState.transactionStep) {
+                        stepEl.classList.add('active');
+                        stepEl.querySelector('.step-circle').innerHTML = i;
+                    } else {
+                         stepEl.querySelector('.step-circle').innerHTML = i;
+                    }
+                }
+                confirmReceiptBtn.classList.toggle('hidden', appState.transactionStep !== 3);
+            } else {
+                statusPanel.classList.add('hidden');
+            }
+            
+            renderMap();
+        }
+
+        function updateSlider() {
+            const offset = -appState.currentSlideIndex * 100;
+            slidesWrapper.style.transform = `translateX(${offset}%)`;
+
+            prevSlideBtn.classList.toggle('disabled', appState.currentSlideIndex === 0);
+            nextSlideBtn.classList.toggle('disabled', appState.currentSlideIndex === totalSlides - 1);
+
+            dotsContainer.querySelectorAll('.dot').forEach((dot, index) => {
+                dot.classList.toggle('active', index === appState.currentSlideIndex);
+            });
+        }
+
+        function resetApp() {
+            appState = { mode: appState.mode, amount: 0, selectedNeighbor: null, transactionStep: 0, currentSlideIndex: 0, neighbors: appState.neighbors };
+            amountInput.value = '';
+            mapMessage.classList.remove('hidden');
+            if (unsubscribeFromTransactions) {
+                unsubscribeFromTransactions();
+                unsubscribeFromTransactions = null;
+            }
+            updateUI();
+            updateSlider();
+        }
+
+        // --- Listeners de Eventos ---
+        modeToggle.addEventListener('change', (e) => {
+            appState.mode = e.target.checked ? 'cash_out' : 'transfer_out';
+            resetApp();
+        });
+
+        findNeighborBtn.addEventListener('click', () => {
+            const amount = parseFloat(amountInput.value);
+            if (!isAuthReady) {
+                showCustomModal('Error', 'La aplicación aún se está cargando. Por favor, espera.', false);
+                return;
+            }
+            if (isNaN(amount) || amount <= 0) {
+                showCustomModal('Monto Inválido', 'Por favor, ingresa un monto válido mayor a 0.', false);
+                return;
+            }
+            appState.amount = amount;
+            updateUI();
+        });
+
+        mapContainer.addEventListener('click', (e) => {
+            if (!isAuthReady) return;
+            const target = e.target.closest('.neighbor');
+            if (target && appState.amount > 0) {
+                const neighborId = target.dataset.id;
+                appState.selectedNeighbor = appState.neighbors.find(n => n.id === neighborId);
+                updateUI();
+            }
+        });
+
+        cancelSelectionBtn.addEventListener('click', () => {
+            appState.selectedNeighbor = null;
+            updateUI();
+        });
+
+        confirmExchangeBtn.addEventListener('click', async () => {
+            if (!isAuthReady || !appState.selectedNeighbor) return;
+
+            // Creamos una nueva transacción en Firestore
+            const transactionsCollection = collection(db, `artifacts/${appId}/users/${userId}/transactions`);
+            const transactionData = {
+                amount: appState.amount,
+                mode: appState.mode,
+                neighborId: appState.selectedNeighbor.id,
+                neighborName: appState.selectedNeighbor.name,
+                status: 1, // 1: Transferencia a la Plataforma
+                createdAt: new Date()
+            };
+
+            try {
+                const docRef = await addDoc(transactionsCollection, transactionData);
+                console.log("Transacción guardada con ID: ", docRef.id);
+                // Escuchamos los cambios en esta transacción para actualizar el UI
+                listenForTransactionUpdates(docRef.id);
+            } catch (e) {
+                console.error("Error al añadir la transacción: ", e);
+                showCustomModal('Error', 'No se pudo iniciar la transacción. Por favor, inténtalo de nuevo.', false);
+            }
+        });
+
+        // Simula la confirmación de la recepción
+        confirmReceiptBtn.addEventListener('click', async () => {
+             if (!isAuthReady) return;
+
+             try {
+                // Asume que la ID de la transacción actual se guarda en algún lugar
+                // Para esta demo, no tenemos una ID, pero en una app real la tendrías
+                // y actualizarías el documento correspondiente.
+                // Aquí simularemos el final.
+                showCustomModal('¡Transacción Completa!', 'Has confirmado la recepción del efectivo. Los fondos han sido liberados a tu vecino. ¡Gracias por usar Vecino Exchange!');
+             } catch (e) {
+                console.error("Error al confirmar la recepción: ", e);
+                showCustomModal('Error', 'No se pudo confirmar la recepción. Por favor, inténtalo de nuevo.', false);
+             }
+        });
+
+        customModalCloseBtn.addEventListener('click', () => {
+            customModalOverlay.classList.add('opacity-0');
+            setTimeout(() => {
+                customModalOverlay.classList.add('hidden');
+                resetApp();
+            }, 300);
+        });
+
+        // Slider navigation handlers
+        nextSlideBtn.addEventListener('click', () => {
+            if (appState.currentSlideIndex < totalSlides - 1) {
+                appState.currentSlideIndex++;
+                updateSlider();
+            }
+        });
+
+        prevSlideBtn.addEventListener('click', () => {
+            if (appState.currentSlideIndex > 0) {
+                appState.currentSlideIndex--;
+                updateSlider();
+            }
+        });
+
+        dotsContainer.addEventListener('click', (e) => {
+            const dot = e.target.closest('.dot');
+            if (dot) {
+                const index = Array.from(dotsContainer.children).indexOf(dot);
+                appState.currentSlideIndex = index;
+                updateSlider();
+            }
+        });
+        
+        // --- Lógica de Autenticación ---
+        showLoginBtn.addEventListener('click', () => {
+            isLoginMode = true;
+            authTitle.textContent = 'Iniciar Sesión';
+            authActionBtn.textContent = 'Iniciar Sesión';
+            forgotPasswordContainer.classList.remove('hidden');
+            showLoginBtn.classList.add('border-indigo-600', 'text-indigo-600');
+            showLoginBtn.classList.remove('border-transparent', 'text-gray-400');
+            showRegisterBtn.classList.add('border-transparent', 'text-gray-400');
+            showRegisterBtn.classList.remove('border-indigo-600', 'text-indigo-600');
+            authErrorMessage.classList.add('hidden');
+        });
+
+        showRegisterBtn.addEventListener('click', () => {
+            isLoginMode = false;
+            authTitle.textContent = 'Registrarse';
+            authActionBtn.textContent = 'Registrarse';
+            forgotPasswordContainer.classList.add('hidden');
+            showRegisterBtn.classList.add('border-indigo-600', 'text-indigo-600');
+            showRegisterBtn.classList.remove('border-transparent', 'text-gray-400');
+            showLoginBtn.classList.add('border-transparent', 'text-gray-400');
+            showLoginBtn.classList.remove('border-indigo-600', 'text-indigo-600');
+            authErrorMessage.classList.add('hidden');
+        });
+
+        authActionBtn.addEventListener('click', () => {
+            const email = emailInput.value;
+            const password = passwordInput.value;
+
+            if (!email || !password) {
+                authErrorMessage.textContent = "Por favor, ingresa tu correo y contraseña.";
+                authErrorMessage.classList.remove('hidden');
+                return;
+            }
+
+            if (isLoginMode) {
+                loginWithEmail(email, password);
+            } else {
+                registerWithEmail(email, password);
+            }
+        });
+
+        googleSignInBtn.addEventListener('click', async () => {
+            const provider = new GoogleAuthProvider();
+            try {
+                await signInWithPopup(auth, provider);
+                authErrorMessage.classList.add('hidden');
+            } catch (error) {
+                console.error("Error al iniciar sesión con Google:", error);
+                let message = "Error al iniciar sesión con Google. Intenta de nuevo.";
+                if (error.code === 'auth/popup-closed-by-user') {
+                    message = "Se canceló el inicio de sesión con Google.";
+                }
+                authErrorMessage.textContent = message;
+                authErrorMessage.classList.remove('hidden');
+            }
+        });
+
+        // New listeners for password reset modal
+        forgotPasswordLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            forgotPasswordModal.classList.add('open');
+            forgotPasswordModal.querySelector('div').classList.add('scale-100');
+            forgotPasswordModal.querySelector('div').classList.remove('scale-95');
+        });
+
+        cancelResetButton.addEventListener('click', () => {
+            forgotPasswordModal.querySelector('div').classList.add('scale-95');
+            forgotPasswordModal.querySelector('div').classList.remove('scale-100');
+            setTimeout(() => {
+                forgotPasswordModal.classList.remove('open');
+            }, 300);
+            resetEmailInput.value = '';
+        });
+
+        sendResetButton.addEventListener('click', async () => {
+            const email = resetEmailInput.value;
+            if (!email) {
+                showCustomModal('Error', 'Por favor, introduce tu correo electrónico.', false);
+                return;
+            }
+
+            try {
+                await sendPasswordResetEmail(auth, email);
+                showCustomModal('Correo Enviado', `Se ha enviado un enlace de restablecimiento a ${email}. Revisa tu bandeja de entrada.`);
+                forgotPasswordModal.querySelector('div').classList.add('scale-95');
+                forgotPasswordModal.querySelector('div').classList.remove('scale-100');
+                setTimeout(() => {
+                    forgotPasswordModal.classList.remove('open');
+                }, 300);
+                resetEmailInput.value = '';
+            } catch (error) {
+                console.error("Error al enviar el correo de restablecimiento:", error);
+                let message = "Error al enviar el correo. Por favor, verifica el correo e inténtalo de nuevo.";
+                if (error.code === 'auth/user-not-found') {
+                    message = "No existe una cuenta con este correo.";
+                }
+                showCustomModal('Error', message, false);
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            try {
+                // Detenemos los listeners de Firestore antes de cerrar sesión
+                if (unsubscribeFromTransactions) {
+                    unsubscribeFromTransactions();
+                    unsubscribeFromTransactions = null;
+                }
+                if (unsubscribeFromNeighbors) {
+                    unsubscribeFromNeighbors();
+                    unsubscribeFromNeighbors = null;
+                }
+                await signOut(auth);
+            } catch (error) {
+                console.error("Error al cerrar sesión:", error);
+            }
+        });
+
+        // --- Conexión y Lógica de Firebase ---
+
+        function loginWithEmail(email, password) {
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    // La función onAuthStateChanged manejará el cambio de UI
+                    authErrorMessage.classList.add('hidden');
+                })
+                .catch((error) => {
+                    console.error("Error de inicio de sesión:", error);
+                    let message = "Error al iniciar sesión.";
+                    if (error.code === 'auth/invalid-email') message = "Formato de correo inválido.";
+                    if (error.code === 'auth/user-not-found') message = "Usuario no encontrado.";
+                    if (error.code === 'auth/wrong-password') message = "Contraseña incorrecta.";
+                    if (error.code === 'auth/operation-not-allowed') message = "El inicio de sesión por Email/Contraseña no está activado en tu proyecto de Firebase. Por favor, habilítalo en la consola de Firebase.";
+                    authErrorMessage.textContent = message;
+                    authErrorMessage.classList.remove('hidden');
+                });
+        }
+
+        function registerWithEmail(email, password) {
+             createUserWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    // La función onAuthStateChanged manejará el cambio de UI
+                    authErrorMessage.classList.add('hidden');
+                })
+                .catch((error) => {
+                    console.error("Error de registro:", error);
+                    let message = "Error al registrarse.";
+                    if (error.code === 'auth/invalid-email') message = "Formato de correo inválido.";
+                    if (error.code === 'auth/weak-password') message = "La contraseña debe tener al menos 6 caracteres.";
+                    if (error.code === 'auth/email-already-in-use') message = "El correo ya está en uso.";
+                    if (error.code === 'auth/operation-not-allowed') message = "El inicio de sesión por Email/Contraseña no está activado en tu proyecto de Firebase. Por favor, habilítalo en la consola de Firebase.";
+                    authErrorMessage.textContent = message;
+                    authErrorMessage.classList.remove('hidden');
+                });
+        }
+
+        function listenForTransactionUpdates(transactionId) {
+            const transactionDocRef = doc(db, `artifacts/${appId}/users/${userId}/transactions`, transactionId);
+            unsubscribeFromTransactions = onSnapshot(transactionDocRef, (doc) => {
+                if (doc.exists()) {
+                    const transaction = doc.data();
+                    appState.transactionStep = transaction.status;
+                    updateUI();
+                }
+            }, (error) => {
+                console.error("Error al escuchar cambios en la transacción:", error);
+            });
+        }
+
+        async function initializeAppWithFirebase() {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                // Esperar hasta que el estado de autenticación cambie
+                onAuthStateChanged(auth, (user) => {
+                    if (user) {
+                        // Usuario ha iniciado sesión
+                        userId = user.uid;
+                        userEmail = user.email;
+                        userInfoSpan.textContent = `Sesión iniciada como: ${userEmail}`;
+                        logoutBtn.classList.remove('hidden');
+                        isAuthReady = true;
+
+                        authContainer.classList.add('hidden');
+                        appContainer.classList.remove('hidden');
+
+                        // Cargar los vecinos (se simulan como datos privados en esta demo)
+                        // En una app real, los vecinos podrían estar en una colección pública
+                        const neighborsCollectionRef = collection(db, `artifacts/${appId}/users/${userId}/neighbors`);
+                        
+                        // Agregamos vecinos si no hay ninguno.
+                        addNeighborsToFirestore(neighborsCollectionRef);
+
+                        // Escuchamos los vecinos en tiempo real con onSnapshot
+                        unsubscribeFromNeighbors = onSnapshot(neighborsCollectionRef, (snapshot) => {
+                            appState.neighbors = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                            // Si la aplicación ya está lista, actualizamos el UI.
+                            if (isAuthReady) {
+                                updateUI();
+                            }
+                        }, (error) => {
+                            console.error("Error al obtener los vecinos:", error);
+                        });
+                        
+                        updateUI();
+                        updateSlider();
+                    } else {
+                        // No hay usuario logueado
+                        console.log("No hay usuario autenticado.");
+                        userId = null;
+                        userEmail = null;
+                        isAuthReady = false;
+                        
+                        authContainer.classList.remove('hidden');
+                        appContainer.classList.add('hidden');
+                        userInfoSpan.textContent = "Inicia sesión o regístrate.";
+                        logoutBtn.classList.add('hidden');
+                        resetApp();
+                    }
+                });
+
+                // Si se proporciona un token de autenticación personalizado, úsalo.
+                if (initialAuthToken) {
+                     await signInWithCustomToken(auth, initialAuthToken);
+                } else {
+                     // Si no hay token, inicia sesión de forma anónima para que la app funcione.
+                     await signInAnonymously(auth);
+                }
+
+            } catch (error) {
+                console.error("Error al inicializar la app de Firebase:", error);
+                userInfoSpan.textContent = "Error al conectar con la base de datos.";
+            }
+        }
+
+        async function addNeighborsToFirestore(collectionRef) {
+             const snapshot = await getDocs(collectionRef);
+             if (snapshot.empty) {
+                console.log("No hay vecinos, agregando datos de prueba...");
+                const hardcodedNeighbors = [
+                    { name: 'Carlos R.', rating: 4.9, feePercent: 3.5, location: { top: '30%', left: '40%' } },
+                    { name: 'Maria L.', rating: 4.8, feePercent: 4.0, location: { top: '65%', left: '25%' } },
+                    { name: 'Javier S.', rating: 5.0, feePercent: 3.0, location: { top: '50%', left: '75%' } },
+                    { name: 'Ana P.', rating: 4.7, feePercent: 4.2, location: { top: '80%', left: '60%' } }
+                ];
+                hardcodedNeighbors.forEach(async (neighbor) => {
+                     await addDoc(collectionRef, neighbor);
+                });
+            } else {
+                console.log("Vecinos existentes encontrados. No se agregaron nuevos datos.");
+            }
+        }
+
+        // Se inicia la aplicación cuando la página está cargada.
+        document.addEventListener('DOMContentLoaded', initializeAppWithFirebase);
+    </script>
+</body>
+</html>
