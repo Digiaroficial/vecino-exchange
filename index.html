@@ -235,8 +235,8 @@
                                 <div class="step-line h-16"></div>
                             </div>
                             <div>
-                                <h3 id="step-1-title" class="step-text font-semibold text-lg text-gray-500">Transferencia a la Plataforma</h3>
-                                <p id="step-1-desc" class="text-gray-600 text-sm">Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.</p>
+                                <h3 id="step-1-title" class="step-text font-semibold text-lg text-gray-500">Esperando Aprobación</h3>
+                                <p id="step-1-desc" class="text-gray-600 text-sm">Tu solicitud está pendiente. El vecino revisará y confirmará la operación.</p>
                             </div>
                         </div>
                         <!-- Paso 2 -->
@@ -246,8 +246,8 @@
                                 <div class="step-line h-16"></div>
                             </div>
                             <div>
-                                <h3 id="step-2-title" class="step-text font-semibold text-lg text-gray-500">Coordinando Entrega</h3>
-                                <p id="step-2-desc" class="text-gray-600 text-sm">Tu vecino ha sido notificado y se está preparando para encontrarte.</p>
+                                <h3 id="step-2-title" class="step-text font-semibold text-lg text-gray-500">Transferencia a la Plataforma</h3>
+                                <p id="step-2-desc" class="text-gray-600 text-sm">Transfiere los fondos a nuestra cuenta de fideicomiso (escrow) para asegurar la operación.</p>
                             </div>
                         </div>
                         <!-- Paso 3 -->
@@ -256,8 +256,8 @@
                                 <div class="step-circle">3</div>
                             </div>
                             <div>
-                                <h3 id="step-3-title" class="step-text font-semibold text-lg text-gray-500">Confirmar Recepción</h3>
-                                <p id="step-3-desc" class="text-gray-600 text-sm">Cuando recibas el efectivo, confírmalo aquí para liberar los fondos al vecino.</p>
+                                <h3 id="step-3-title" class="step-text font-semibold text-lg text-gray-500">Coordinando Entrega</h3>
+                                <p id="step-3-desc" class="text-gray-600 text-sm">Tu vecino ha sido notificado y se está preparando para encontrarte.</p>
                                 <button id="confirm-receipt-btn" class="hidden mt-2 bg-indigo-600 text-white font-bold py-2 px-3 rounded-lg hover:bg-indigo-700 transition duration-300 text-sm">He Recibido el Efectivo</button>
                             </div>
                         </div>
@@ -447,7 +447,7 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
         const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {
             // --- TU CONFIGURACIÓN DE FIREBASE HA SIDO INSERTADA AQUÍ ---
-            apiKey: "AIzaSyC92vhMEwdaeHvWeriFM91bQEHwYADhRNs",
+            apiKey: "AIzaSyC92vhMEwdaeHvWeriFM91bQEHhWADhRNs",
             authDomain: "vecinos-exchange.firebaseapp.com",
             projectId: "vecinos-exchange",
             storageBucket: "vecinos-exchange.firebasestorage.app",
@@ -605,15 +605,15 @@
             appState.activeTransactions.forEach(transaction => {
                 // Para simplificar la demo, usamos la ubicación del vecino (receiver)
                 // En una app real se podría usar una ubicación de encuentro neutral o la ubicación del originador.
-                const receiver = appState.neighbors.find(n => n.id === transaction.receiverId);
-                const sender = appState.neighbors.find(n => n.id === transaction.senderId);
-                const transactionUser = transaction.senderId === userId ? receiver : sender;
-                if(transactionUser) {
+                const transactionPartner = transaction.senderId === userId
+                    ? appState.neighbors.find(n => n.id === transaction.receiverId)
+                    : appState.neighbors.find(n => n.id === transaction.senderId);
+                if(transactionPartner) {
                     const transactionIcon = document.createElement('div');
                     transactionIcon.className = 'map-icon transaction';
                     transactionIcon.innerHTML = '💰';
-                    transactionIcon.style.top = transactionUser.location.top;
-                    transactionIcon.style.left = transactionUser.location.left;
+                    transactionIcon.style.top = transactionPartner.location.top;
+                    transactionIcon.style.left = transactionPartner.location.left;
                     mapContainer.appendChild(transactionIcon);
                 }
             });
@@ -858,7 +858,7 @@
                         receiverEmail: userEmail,
                         amount: request.amount,
                         mode: 'cash_out', // Modo del que solicitó
-                        status: 1, // 'Transferencia a la Plataforma'
+                        status: 1, // 'Esperando Aprobación'
                         createdAt: new Date()
                     };
                     await addDoc(transactionsCollection, transactionData);
@@ -938,7 +938,7 @@
             isLoginMode = true;
             authTitle.textContent = 'Iniciar Sesión';
             authActionBtn.textContent = 'Iniciar Sesión';
-            forgotPasswordContainer.classList.add('hidden');
+            forgotPasswordContainer.classList.remove('hidden'); // Corregido: Mostrar al iniciar sesión
             showLoginBtn.classList.add('border-indigo-600', 'text-indigo-600');
             showLoginBtn.classList.remove('border-transparent', 'text-gray-400');
             showRegisterBtn.classList.add('border-transparent', 'text-gray-400');
@@ -950,7 +950,7 @@
             isLoginMode = false;
             authTitle.textContent = 'Registrarse';
             authActionBtn.textContent = 'Registrarse';
-            forgotPasswordContainer.classList.remove('hidden');
+            forgotPasswordContainer.classList.add('hidden'); // Corregido: Ocultar al registrarse
             showRegisterBtn.classList.add('border-indigo-600', 'text-indigo-600');
             showRegisterBtn.classList.remove('border-transparent', 'text-gray-400');
             showLoginBtn.classList.add('border-transparent', 'text-gray-400');
@@ -1145,36 +1145,48 @@
         }
         
         // --- NUEVO: Listener para transacciones activas
+        // Se ha refactorizado esta función para usar dos listeners separados en lugar de anidarlos.
+        // Esto mejora la robustez y evita posibles errores de sincronización.
         function listenForActiveTransactions() {
             if (!db || !userId) return;
+
             const transactionsCollectionRef = collection(db, `artifacts/${appId}/public/data/activeTransactions`);
-            // Escuchamos las transacciones donde somos el emisor o el receptor
-            // Nota: En una aplicación real, esto requeriría una lógica más robusta.
-            // Para la demo, simplificamos escuchando las transacciones del emisor.
-            const q = query(transactionsCollectionRef, where("senderId", "==", userId));
-            // Para el que recibe la solicitud.
-            const q2 = query(transactionsCollectionRef, where("receiverId", "==", userId));
+            const senderQuery = query(transactionsCollectionRef, where("senderId", "==", userId));
+            const receiverQuery = query(transactionsCollectionRef, where("receiverId", "==", userId));
 
-            unsubscribeFromActiveTransactions = onSnapshot(q, (senderSnapshot) => {
-                 appState.activeTransactions = senderSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                 
-                 onSnapshot(q2, (receiverSnapshot) => {
-                    const receiverTransactions = receiverSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                    // Combina las transacciones de ambos, eliminando duplicados
-                    const allTransactions = [...appState.activeTransactions, ...receiverTransactions];
-                    const uniqueTransactions = allTransactions.filter((v,i,a)=>a.findIndex(t=>(t.id === v.id))===i);
-                    appState.activeTransactions = uniqueTransactions;
-                    updateUI();
-                 }, (error) => {
-                    console.error("Error al escuchar transacciones activas (receiver):", error);
-                 });
+            let senderTransactions = [];
+            let receiverTransactions = [];
 
+            const updateCombinedTransactions = () => {
+                const allTransactions = [...senderTransactions, ...receiverTransactions];
+                const uniqueTransactions = allTransactions.filter((v, i, a) => a.findIndex(t => t.id === v.id) === i);
+                appState.activeTransactions = uniqueTransactions;
+                updateUI();
+            };
+
+            const unsubscribeSender = onSnapshot(senderQuery, (snapshot) => {
+                senderTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                updateCombinedTransactions();
             }, (error) => {
                 console.error("Error al escuchar transacciones activas (sender):", error);
             });
+
+            const unsubscribeReceiver = onSnapshot(receiverQuery, (snapshot) => {
+                receiverTransactions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                updateCombinedTransactions();
+            }, (error) => {
+                console.error("Error al escuchar transacciones activas (receiver):", error);
+            });
+            
+            // Almacenamos las funciones de desuscripción para poder llamarlas más tarde
+            unsubscribeFromActiveTransactions = () => {
+                unsubscribeSender();
+                unsubscribeReceiver();
+            };
         }
 
-        function initializeAppWithFirebase() {
+        // Se ha hecho esta función async para poder usar 'await' dentro de ella.
+        async function initializeAppWithFirebase() {
             try {
                 app = initializeApp(firebaseConfig);
                 auth = getAuth(app);
@@ -1248,7 +1260,10 @@
         }
 
         // Se inicia la aplicación cuando la página está cargada.
-        document.addEventListener('DOMContentLoaded', initializeAppWithFirebase);
+        // Ahora se usa 'async' para poder llamar a la función de inicialización con 'await'.
+        document.addEventListener('DOMContentLoaded', async () => {
+            await initializeAppWithFirebase();
+        });
     </script>
 </body>
 </html>
